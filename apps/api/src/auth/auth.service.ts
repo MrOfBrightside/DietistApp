@@ -84,6 +84,23 @@ export class AuthService {
     }
   }
 
+  async getUserById(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Användaren finns inte');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId,
+    };
+  }
+
   private generateTokens(user: UserEntity): AuthResponse {
     const payload = {
       sub: user.id,
