@@ -18,10 +18,14 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
+    "composite": true,
     "paths": {
-      "@dietistapp/shared": ["../../packages/shared/src"]
+      "@dietistapp/shared": ["../../packages/shared/dist"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"],
+  "references": [
+    { "path": "../../packages/shared" }
+  ]
 }

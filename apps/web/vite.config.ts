@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@dietistapp/shared': path.resolve(__dirname, '../../packages/shared/src'),
+      '@dietistapp/shared': path.resolve(__dirname, '../../packages/shared/dist'),
     },
   },
   server: {

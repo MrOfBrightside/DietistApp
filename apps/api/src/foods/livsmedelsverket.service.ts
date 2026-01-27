@@ -93,7 +93,8 @@ export class LivsmedelverketService {
 
       return response.data;
     } catch (error) {
-      this.logger.error(`Fel vid sökning: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Fel vid sökning: ${message}`);
       throw new HttpException(
         'Kunde inte söka livsmedel',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -153,7 +154,8 @@ export class LivsmedelverketService {
         return cached.payloadJson;
       }
 
-      this.logger.error(`Kunde inte hämta livsmedel ${foodNumber}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Kunde inte hämta livsmedel ${foodNumber}: ${message}`);
       throw new HttpException(
         'Kunde inte hämta livsmedel',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -215,8 +217,9 @@ export class LivsmedelverketService {
         return cached.payloadJson;
       }
 
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Kunde inte hämta näringsdata ${foodNumber}: ${error.message}`,
+        `Kunde inte hämta näringsdata ${foodNumber}: ${message}`,
       );
       throw new HttpException(
         'Kunde inte hämta näringsdata',
