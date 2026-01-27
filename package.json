@@ -1,0 +1,33 @@
+{
+  "name": "dietistapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "En komplett webbaserad applikation för kostregistrering och näringsberäkning",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspaces",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist packages/*/dist",
+    "docker:build": "docker-compose -f infra/docker/docker-compose.yml build",
+    "docker:up": "docker-compose -f infra/docker/docker-compose.yml up",
+    "docker:down": "docker-compose -f infra/docker/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

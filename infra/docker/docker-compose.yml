@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dietistapp-postgres
+    environment:
+      POSTGRES_USER: dietistapp
+      POSTGRES_PASSWORD: dietistapp_password
+      POSTGRES_DB: dietistapp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dietistapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    container_name: dietistapp-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: dietistapp
+      DATABASE_PASSWORD: dietistapp_password
+      DATABASE_NAME: dietistapp_db
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      JWT_ACCESS_TOKEN_EXPIRATION: 15m
+      JWT_REFRESH_TOKEN_EXPIRATION: 7d
+      LIVSMEDELSVERKET_API_URL: https://webservice.livsmedelsverket.se/livsmedel/v1
+      CACHE_TTL_DAYS: 7
+      CORS_ORIGIN: http://localhost
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3000/api
+    container_name: dietistapp-web
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
