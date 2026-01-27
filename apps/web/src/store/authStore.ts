@@ -16,7 +16,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, role: UserRole) => Promise<void>;
   logout: () => void;
-  checkAuth: () => void;
+  checkAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -54,13 +54,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, isAuthenticated: false });
   },
 
-  checkAuth: () => {
+  checkAuth: async () => {
     const token = localStorage.getItem('accessToken');
-    if (token) {
-      // TODO: Validate token or fetch current user
-      set({ isLoading: false });
-    } else {
-      set({ isLoading: false });
+    if (!token) {
+      set({ isLoading: false, isAuthenticated: false, user: null });
+      return;
+    }
+
+    try {
+      // Validate token by fetching current user
+      const response = await api.get('/auth/me');
+      const user = response.data;
+
+      set({ user, isAuthenticated: true, isLoading: false });
+    } catch (error) {
+      // Token invalid or refresh failed - clear auth state
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));
