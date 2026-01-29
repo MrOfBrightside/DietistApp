@@ -16,6 +16,7 @@ export * from './dto/auth.dto';
 export * from './dto/food-entry.dto';
 export * from './dto/recipe.dto';
 export * from './dto/food.dto';
+export * from './dto/dashboard.dto';
 
 // Utils
 export * from './utils/nutrition-calculator';
