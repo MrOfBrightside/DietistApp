@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { FoodsModule } from './foods/foods.module';
 import { EntriesModule } from './entries/entries.module';
 import { RecipesModule } from './recipes/recipes.module';
+import { ClientsModule } from './clients/clients.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -21,6 +22,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     FoodsModule,
     EntriesModule,
     RecipesModule,
+    ClientsModule,
   ],
   controllers: [AppController],
   providers: [
