@@ -4,6 +4,7 @@ export interface Recipe {
   name: string;
   servings: number;
   description?: string;
+  items?: RecipeItem[];
   createdAt: Date;
   updatedAt: Date;
 }
