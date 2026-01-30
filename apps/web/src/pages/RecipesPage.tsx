@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { recipeService } from '../services/recipeService';
 import { foodService } from '../services/foodService';
-import { Recipe, CreateRecipeDto, RecipeItemDto, LivsmedelFoodItem } from '@dietistapp/shared';
+import {
+  Recipe,
+  CreateRecipeDto,
+  RecipeItemDto,
+  LivsmedelFoodItem,
+  NutritionSummary,
+  calculateNutrientIntake,
+  sumNutrients,
+  NUTRIENT_CODES
+} from '@dietistapp/shared';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 
@@ -23,6 +32,8 @@ export default function RecipesPage() {
   const [selectedRecipe, setSelectedRecipe] = useState<ExtendedRecipe | null>(null);
   const [viewingRecipe, setViewingRecipe] = useState<ExtendedRecipe | null>(null);
   const [deleteRecipeId, setDeleteRecipeId] = useState<string | null>(null);
+  const [recipeNutrition, setRecipeNutrition] = useState<NutritionSummary | null>(null);
+  const [calculatingNutrition, setCalculatingNutrition] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<CreateRecipeDto>({
@@ -104,6 +115,43 @@ export default function RecipesPage() {
     setFoodSearchResults([]);
   };
 
+  // Calculate nutrition for a recipe
+  const calculateRecipeNutrition = async (recipe: ExtendedRecipe) => {
+    if (!recipe.items || recipe.items.length === 0) {
+      return null;
+    }
+
+    setCalculatingNutrition(true);
+    try {
+      const itemNutrients = [];
+      let totalGrams = 0;
+
+      for (const item of recipe.items) {
+        const nutrientData = await foodService.getNutrientsByFoodNumber(item.foodNumber);
+        const nutrients = calculateNutrientIntake(item.grams, nutrientData.naeringsvaerden);
+        itemNutrients.push(nutrients);
+        totalGrams += item.grams;
+      }
+
+      const totalNutrients = sumNutrients(itemNutrients);
+
+      const nutrition: NutritionSummary = {
+        nutrients: totalNutrients,
+        totalGrams,
+        calculatedAt: new Date(),
+      };
+
+      setRecipeNutrition(nutrition);
+      return nutrition;
+    } catch (err: any) {
+      console.error('Nutrition calculation error:', err);
+      setError('Kunde inte beräkna näringsvärden');
+      return null;
+    } finally {
+      setCalculatingNutrition(false);
+    }
+  };
+
   const loadRecipes = async () => {
     try {
       setLoading(true);
@@ -168,6 +216,7 @@ export default function RecipesPage() {
     try {
       const fullRecipe = await recipeService.getRecipeById(recipe.id);
       setViewingRecipe(fullRecipe as ExtendedRecipe);
+      await calculateRecipeNutrition(fullRecipe as ExtendedRecipe);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Kunde inte ladda recept');
     }
@@ -517,6 +566,56 @@ export default function RecipesPage() {
                   )}
                 </div>
 
+                {/* Nutrition Section */}
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">Näringsvärden</h3>
+                  {calculatingNutrition ? (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                      <span>Beräknar näringsvärden...</span>
+                    </div>
+                  ) : recipeNutrition ? (
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                      <div className="text-sm text-gray-600 mb-3">
+                        Per recept ({viewingRecipe.servings} {viewingRecipe.servings === 1 ? 'portion' : 'portioner'})
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(() => {
+                          const getMainNutrients = () => {
+                            const nutrients = recipeNutrition.nutrients;
+                            return [
+                              { label: 'Energi', code: NUTRIENT_CODES.ENERGY },
+                              { label: 'Protein', code: NUTRIENT_CODES.PROTEIN },
+                              { label: 'Kolhydrater', code: NUTRIENT_CODES.CARBOHYDRATE },
+                              { label: 'Fett', code: NUTRIENT_CODES.FAT },
+                              { label: 'Fiber', code: NUTRIENT_CODES.FIBER },
+                            ].map(({ label, code }) => {
+                              const nutrient = nutrients.find(n => n.code === code);
+                              return { label, nutrient };
+                            }).filter(({ nutrient }) => nutrient !== undefined);
+                          };
+
+                          return getMainNutrients().map(({ label, nutrient }) => (
+                            <div key={nutrient!.code} className="bg-white p-3 rounded border border-gray-200">
+                              <div className="text-xs text-gray-500 mb-1">{label}</div>
+                              <div className="font-semibold text-gray-900">
+                                {nutrient!.value !== null
+                                  ? `${Math.round(nutrient!.value * 10) / 10} ${nutrient!.unit}`
+                                  : 'N/A'}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                      <div className="text-xs text-gray-500 pt-2 border-t">
+                        Per portion: Dela värdena ovan med {viewingRecipe.servings} {viewingRecipe.servings === 1 ? 'portion' : 'portioner'}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500">Kunde inte beräkna näringsvärden</p>
+                  )}
+                </div>
+
                 <div className="text-sm text-gray-500 pt-4 border-t">
                   <p>Skapad: {new Date(viewingRecipe.createdAt).toLocaleDateString('sv-SE')}</p>
                   <p>Uppdaterad: {new Date(viewingRecipe.updatedAt).toLocaleDateString('sv-SE')}</p>
@@ -528,6 +627,7 @@ export default function RecipesPage() {
                   className="btn btn-secondary flex-1"
                   onClick={() => {
                     setViewingRecipe(null);
+                    setRecipeNutrition(null);
                     handleEditRecipe(viewingRecipe);
                   }}
                 >
@@ -535,7 +635,10 @@ export default function RecipesPage() {
                 </button>
                 <button
                   className="btn btn-primary"
-                  onClick={() => setViewingRecipe(null)}
+                  onClick={() => {
+                    setViewingRecipe(null);
+                    setRecipeNutrition(null);
+                  }}
                 >
                   Stäng
                 </button>
