@@ -21,6 +21,7 @@ interface ExtendedRecipe extends Recipe {
     foodNameSnapshot: string;
     grams: number;
   }>;
+  nutrition?: NutritionSummary;
 }
 
 export default function RecipesPage() {
@@ -34,6 +35,8 @@ export default function RecipesPage() {
   const [deleteRecipeId, setDeleteRecipeId] = useState<string | null>(null);
   const [recipeNutrition, setRecipeNutrition] = useState<NutritionSummary | null>(null);
   const [calculatingNutrition, setCalculatingNutrition] = useState(false);
+  const [recipeNutritionCache, setRecipeNutritionCache] = useState<Map<string, NutritionSummary>>(new Map());
+  const [loadingNutritionIds, setLoadingNutritionIds] = useState<Set<string>>(new Set());
 
   // Form state
   const [formData, setFormData] = useState<CreateRecipeDto>({
@@ -115,7 +118,7 @@ export default function RecipesPage() {
     setFoodSearchResults([]);
   };
 
-  // Calculate nutrition for a recipe
+  // Calculate nutrition for viewing in modal
   const calculateRecipeNutrition = async (recipe: ExtendedRecipe) => {
     if (!recipe.items || recipe.items.length === 0) {
       return null;
@@ -123,24 +126,7 @@ export default function RecipesPage() {
 
     setCalculatingNutrition(true);
     try {
-      const itemNutrients = [];
-      let totalGrams = 0;
-
-      for (const item of recipe.items) {
-        const nutrientData = await foodService.getNutrientsByFoodNumber(item.foodNumber);
-        const nutrients = calculateNutrientIntake(item.grams, nutrientData.naeringsvaerden);
-        itemNutrients.push(nutrients);
-        totalGrams += item.grams;
-      }
-
-      const totalNutrients = sumNutrients(itemNutrients);
-
-      const nutrition: NutritionSummary = {
-        nutrients: totalNutrients,
-        totalGrams,
-        calculatedAt: new Date(),
-      };
-
+      const nutrition = await calculateNutritionForRecipe(recipe);
       setRecipeNutrition(nutrition);
       return nutrition;
     } catch (err: any) {
@@ -158,10 +144,69 @@ export default function RecipesPage() {
       const data = await recipeService.getRecipes();
       setRecipes(data);
       setError(null);
+      // Load nutrition for cards in background
+      loadRecipeCardsNutrition(data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Kunde inte ladda recept');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load nutrition for recipe cards
+  const loadRecipeCardsNutrition = async (recipesToLoad: ExtendedRecipe[]) => {
+    for (const recipe of recipesToLoad) {
+      if (!recipe.id || recipeNutritionCache.has(recipe.id)) continue;
+
+      setLoadingNutritionIds(prev => new Set(prev).add(recipe.id));
+
+      try {
+        const fullRecipe = await recipeService.getRecipeById(recipe.id);
+        if (fullRecipe.items && fullRecipe.items.length > 0) {
+          const nutrition = await calculateNutritionForRecipe(fullRecipe as ExtendedRecipe);
+          if (nutrition) {
+            setRecipeNutritionCache(prev => new Map(prev).set(recipe.id, nutrition));
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to load nutrition for recipe ${recipe.id}:`, err);
+      } finally {
+        setLoadingNutritionIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(recipe.id);
+          return newSet;
+        });
+      }
+    }
+  };
+
+  // Calculate nutrition without setting modal state
+  const calculateNutritionForRecipe = async (recipe: ExtendedRecipe): Promise<NutritionSummary | null> => {
+    if (!recipe.items || recipe.items.length === 0) {
+      return null;
+    }
+
+    try {
+      const itemNutrients = [];
+      let totalGrams = 0;
+
+      for (const item of recipe.items) {
+        const nutrientData = await foodService.getNutrientsByFoodNumber(item.foodNumber);
+        const nutrients = calculateNutrientIntake(item.grams, nutrientData.naeringsvaerden);
+        itemNutrients.push(nutrients);
+        totalGrams += item.grams;
+      }
+
+      const totalNutrients = sumNutrients(itemNutrients);
+
+      return {
+        nutrients: totalNutrients,
+        totalGrams,
+        calculatedAt: new Date(),
+      };
+    } catch (err: any) {
+      console.error('Nutrition calculation error:', err);
+      return null;
     }
   };
 
@@ -318,37 +363,103 @@ export default function RecipesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {recipes.map((recipe) => (
-            <div key={recipe.id} className="card hover:shadow-md transition-shadow">
-              <h3 className="text-xl font-semibold mb-2">{recipe.name}</h3>
-              <p className="text-gray-600 mb-2">Portioner: {recipe.servings}</p>
-              {recipe.description && (
-                <p className="text-gray-500 text-sm mb-4 line-clamp-2">
-                  {recipe.description}
-                </p>
-              )}
-              <div className="flex gap-2 mt-4">
-                <button
-                  className="btn btn-primary flex-1"
-                  onClick={() => handleViewRecipe(recipe)}
-                >
-                  Visa
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => handleEditRecipe(recipe)}
-                >
-                  Redigera
-                </button>
-                <button
-                  className="btn bg-red-600 text-white hover:bg-red-700"
-                  onClick={() => handleDeleteRecipe(recipe.id)}
-                >
-                  Ta bort
-                </button>
+          {recipes.map((recipe) => {
+            const nutrition = recipeNutritionCache.get(recipe.id);
+            const isLoadingNutrition = loadingNutritionIds.has(recipe.id);
+
+            return (
+              <div key={recipe.id} className="card hover:shadow-md transition-shadow">
+                <h3 className="text-xl font-semibold mb-2">{recipe.name}</h3>
+                <p className="text-gray-600 mb-2">Portioner: {recipe.servings}</p>
+                {recipe.description && (
+                  <p className="text-gray-500 text-sm mb-4 line-clamp-2">
+                    {recipe.description}
+                  </p>
+                )}
+
+                {/* Nutrition Preview */}
+                {isLoadingNutrition ? (
+                  <div className="bg-gray-50 p-3 rounded mb-4 flex items-center gap-2 text-sm text-gray-600">
+                    <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                    <span>Laddar näring...</span>
+                  </div>
+                ) : nutrition ? (
+                  <div className="bg-gray-50 p-3 rounded mb-4">
+                    <div className="text-xs text-gray-600 mb-2 font-medium">Per portion:</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {(() => {
+                        const energy = nutrition.nutrients.find(n => n.code === NUTRIENT_CODES.ENERGY);
+                        const protein = nutrition.nutrients.find(n => n.code === NUTRIENT_CODES.PROTEIN);
+                        const carbs = nutrition.nutrients.find(n => n.code === NUTRIENT_CODES.CARBOHYDRATE);
+                        const fat = nutrition.nutrients.find(n => n.code === NUTRIENT_CODES.FAT);
+
+                        const perServing = (value: number | null) =>
+                          value !== null ? Math.round((value / recipe.servings) * 10) / 10 : null;
+
+                        return (
+                          <>
+                            {energy && (
+                              <div>
+                                <span className="text-gray-600">Energi: </span>
+                                <span className="font-semibold">
+                                  {perServing(energy.value)} {energy.unit}
+                                </span>
+                              </div>
+                            )}
+                            {protein && (
+                              <div>
+                                <span className="text-gray-600">Protein: </span>
+                                <span className="font-semibold">
+                                  {perServing(protein.value)} {protein.unit}
+                                </span>
+                              </div>
+                            )}
+                            {carbs && (
+                              <div>
+                                <span className="text-gray-600">Kolhydr: </span>
+                                <span className="font-semibold">
+                                  {perServing(carbs.value)} {carbs.unit}
+                                </span>
+                              </div>
+                            )}
+                            {fat && (
+                              <div>
+                                <span className="text-gray-600">Fett: </span>
+                                <span className="font-semibold">
+                                  {perServing(fat.value)} {fat.unit}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-2 mt-4">
+                  <button
+                    className="btn btn-primary flex-1"
+                    onClick={() => handleViewRecipe(recipe)}
+                  >
+                    Visa
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleEditRecipe(recipe)}
+                  >
+                    Redigera
+                  </button>
+                  <button
+                    className="btn bg-red-600 text-white hover:bg-red-700"
+                    onClick={() => handleDeleteRecipe(recipe.id)}
+                  >
+                    Ta bort
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -575,40 +686,78 @@ export default function RecipesPage() {
                       <span>Beräknar näringsvärden...</span>
                     </div>
                   ) : recipeNutrition ? (
-                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                      <div className="text-sm text-gray-600 mb-3">
-                        Per recept ({viewingRecipe.servings} {viewingRecipe.servings === 1 ? 'portion' : 'portioner'})
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        {(() => {
-                          const getMainNutrients = () => {
-                            const nutrients = recipeNutrition.nutrients;
-                            return [
-                              { label: 'Energi', code: NUTRIENT_CODES.ENERGY },
-                              { label: 'Protein', code: NUTRIENT_CODES.PROTEIN },
-                              { label: 'Kolhydrater', code: NUTRIENT_CODES.CARBOHYDRATE },
-                              { label: 'Fett', code: NUTRIENT_CODES.FAT },
-                              { label: 'Fiber', code: NUTRIENT_CODES.FIBER },
-                            ].map(({ label, code }) => {
-                              const nutrient = nutrients.find(n => n.code === code);
-                              return { label, nutrient };
-                            }).filter(({ nutrient }) => nutrient !== undefined);
-                          };
+                    <div className="space-y-4">
+                      {/* Per Portion */}
+                      <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                        <div className="text-sm font-semibold text-blue-900 mb-3">
+                          Per portion (1 av {viewingRecipe.servings})
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {(() => {
+                            const getMainNutrients = () => {
+                              const nutrients = recipeNutrition.nutrients;
+                              return [
+                                { label: 'Energi', code: NUTRIENT_CODES.ENERGY },
+                                { label: 'Protein', code: NUTRIENT_CODES.PROTEIN },
+                                { label: 'Kolhydrater', code: NUTRIENT_CODES.CARBOHYDRATE },
+                                { label: 'Fett', code: NUTRIENT_CODES.FAT },
+                                { label: 'Fiber', code: NUTRIENT_CODES.FIBER },
+                              ].map(({ label, code }) => {
+                                const nutrient = nutrients.find(n => n.code === code);
+                                return { label, nutrient };
+                              }).filter(({ nutrient }) => nutrient !== undefined);
+                            };
 
-                          return getMainNutrients().map(({ label, nutrient }) => (
-                            <div key={nutrient!.code} className="bg-white p-3 rounded border border-gray-200">
-                              <div className="text-xs text-gray-500 mb-1">{label}</div>
-                              <div className="font-semibold text-gray-900">
-                                {nutrient!.value !== null
-                                  ? `${Math.round(nutrient!.value * 10) / 10} ${nutrient!.unit}`
-                                  : 'N/A'}
+                            const perServing = (value: number | null) =>
+                              value !== null ? Math.round((value / viewingRecipe.servings) * 10) / 10 : null;
+
+                            return getMainNutrients().map(({ label, nutrient }) => (
+                              <div key={nutrient!.code} className="bg-white p-3 rounded border border-blue-100">
+                                <div className="text-xs text-gray-600 mb-1">{label}</div>
+                                <div className="font-bold text-gray-900">
+                                  {nutrient!.value !== null
+                                    ? `${perServing(nutrient!.value)} ${nutrient!.unit}`
+                                    : 'N/A'}
+                                </div>
                               </div>
-                            </div>
-                          ));
-                        })()}
+                            ));
+                          })()}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500 pt-2 border-t">
-                        Per portion: Dela värdena ovan med {viewingRecipe.servings} {viewingRecipe.servings === 1 ? 'portion' : 'portioner'}
+
+                      {/* Total Recipe */}
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-3">
+                          Totalt hela receptet ({viewingRecipe.servings} {viewingRecipe.servings === 1 ? 'portion' : 'portioner'})
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {(() => {
+                            const getMainNutrients = () => {
+                              const nutrients = recipeNutrition.nutrients;
+                              return [
+                                { label: 'Energi', code: NUTRIENT_CODES.ENERGY },
+                                { label: 'Protein', code: NUTRIENT_CODES.PROTEIN },
+                                { label: 'Kolhydrater', code: NUTRIENT_CODES.CARBOHYDRATE },
+                                { label: 'Fett', code: NUTRIENT_CODES.FAT },
+                                { label: 'Fiber', code: NUTRIENT_CODES.FIBER },
+                              ].map(({ label, code }) => {
+                                const nutrient = nutrients.find(n => n.code === code);
+                                return { label, nutrient };
+                              }).filter(({ nutrient }) => nutrient !== undefined);
+                            };
+
+                            return getMainNutrients().map(({ label, nutrient }) => (
+                              <div key={nutrient!.code} className="bg-white p-3 rounded border border-gray-200">
+                                <div className="text-xs text-gray-600 mb-1">{label}</div>
+                                <div className="font-semibold text-gray-900">
+                                  {nutrient!.value !== null
+                                    ? `${Math.round(nutrient!.value * 10) / 10} ${nutrient!.unit}`
+                                    : 'N/A'}
+                                </div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
                       </div>
                     </div>
                   ) : (
