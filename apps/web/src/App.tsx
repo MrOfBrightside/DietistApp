@@ -13,6 +13,8 @@ import RecipesPage from './pages/RecipesPage';
 // Components
 import Layout from './components/common/Layout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingSpinner from './components/common/LoadingSpinner';
 
 function App() {
   const { checkAuth, isLoading } = useAuthStore();
@@ -22,49 +24,47 @@ function App() {
   }, [checkAuth]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Laddar...</div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen text="Kontrollerar autentisering..." />;
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-      <Route element={<Layout />}>
-        <Route
-          path="/diary"
-          element={
-            <ProtectedRoute allowedRoles={[UserRole.CLIENT]}>
-              <ClientDiaryPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route element={<Layout />}>
+          <Route
+            path="/diary"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.CLIENT]}>
+                <ClientDiaryPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={[UserRole.DIETITIAN, UserRole.ADMIN]}>
-              <DietitianDashboardPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DIETITIAN, UserRole.ADMIN]}>
+                <DietitianDashboardPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/recipes"
-          element={
-            <ProtectedRoute allowedRoles={[UserRole.CLIENT, UserRole.DIETITIAN]}>
-              <RecipesPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/recipes"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.CLIENT, UserRole.DIETITIAN]}>
+                <RecipesPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route path="/" element={<Navigate to="/diary" replace />} />
-      </Route>
-    </Routes>
+          <Route path="/" element={<Navigate to="/diary" replace />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { UserRole, registerSchema } from '@dietistapp/shared';
 import { ZodError } from 'zod';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 interface FieldErrors {
   email?: string;
@@ -208,9 +209,16 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="btn btn-primary w-full"
+              className="btn btn-primary w-full flex items-center justify-center gap-2"
             >
-              {isLoading ? 'Skapar konto...' : 'Skapa konto'}
+              {isLoading ? (
+                <>
+                  <LoadingSpinner size="sm" text="" />
+                  <span>Skapar konto...</span>
+                </>
+              ) : (
+                'Skapa konto'
+              )}
             </button>
           </div>
 
