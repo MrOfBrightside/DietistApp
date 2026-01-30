@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { recipeService } from '../services/recipeService';
-import { Recipe, CreateRecipeDto, RecipeItemDto } from '@dietistapp/shared';
+import { foodService } from '../services/foodService';
+import { Recipe, CreateRecipeDto, RecipeItemDto, LivsmedelFoodItem } from '@dietistapp/shared';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 
@@ -38,9 +39,70 @@ export default function RecipesPage() {
     grams: 100,
   });
 
+  // Food search state
+  const [foodSearchQuery, setFoodSearchQuery] = useState('');
+  const [foodSearchResults, setFoodSearchResults] = useState<LivsmedelFoodItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     loadRecipes();
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced food search
+  const handleFoodSearch = (query: string) => {
+    setFoodSearchQuery(query);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (query.length < 2) {
+      setFoodSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    setIsSearching(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await foodService.searchFoods(query, 10);
+        setFoodSearchResults(result.items);
+        setShowSearchDropdown(true);
+      } catch (err: any) {
+        console.error('Food search error:', err);
+        setFoodSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+  };
+
+  // Handle food selection from search results
+  const handleFoodSelect = (food: LivsmedelFoodItem) => {
+    setNewIngredient({
+      ...newIngredient,
+      foodNumber: food.nummer,
+      foodNameSnapshot: food.namn,
+    });
+    setFoodSearchQuery(food.namn);
+    setShowSearchDropdown(false);
+    setFoodSearchResults([]);
+  };
 
   const loadRecipes = async () => {
     try {
@@ -68,6 +130,9 @@ export default function RecipesPage() {
       foodNameSnapshot: '',
       grams: 100,
     });
+    setFoodSearchQuery('');
+    setFoodSearchResults([]);
+    setShowSearchDropdown(false);
     setShowModal(true);
   };
 
@@ -90,6 +155,9 @@ export default function RecipesPage() {
         foodNameSnapshot: '',
         grams: 100,
       });
+      setFoodSearchQuery('');
+      setFoodSearchResults([]);
+      setShowSearchDropdown(false);
       setShowModal(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Kunde inte ladda recept');
@@ -139,6 +207,9 @@ export default function RecipesPage() {
       foodNameSnapshot: '',
       grams: 100,
     });
+    setFoodSearchQuery('');
+    setFoodSearchResults([]);
+    setShowSearchDropdown(false);
   };
 
   const handleRemoveIngredient = (index: number) => {
@@ -307,30 +378,63 @@ export default function RecipesPage() {
 
                   <div className="border border-gray-200 rounded-lg p-4 space-y-3">
                     <h3 className="font-medium">Lägg till ingrediens</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-sm mb-1">Livsmedelsnummer</label>
-                        <input
-                          type="text"
-                          className="input w-full"
-                          value={newIngredient.foodNumber}
-                          onChange={(e) => setNewIngredient({ ...newIngredient, foodNumber: e.target.value })}
-                          placeholder="t.ex. 1234"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm mb-1">Livsmedelsnamn</label>
-                        <input
-                          type="text"
-                          className="input w-full"
-                          value={newIngredient.foodNameSnapshot}
-                          onChange={(e) => setNewIngredient({ ...newIngredient, foodNameSnapshot: e.target.value })}
-                          placeholder="t.ex. Mjölk"
-                        />
-                      </div>
+
+                    {/* Food Search with Autocomplete */}
+                    <div className="relative" ref={searchDropdownRef}>
+                      <label className="block text-sm mb-1">Sök livsmedel *</label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={foodSearchQuery}
+                        onChange={(e) => handleFoodSearch(e.target.value)}
+                        placeholder="Skriv minst 2 tecken för att söka..."
+                        autoComplete="off"
+                      />
+
+                      {isSearching && (
+                        <div className="absolute right-3 top-9">
+                          <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                        </div>
+                      )}
+
+                      {showSearchDropdown && foodSearchResults.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {foodSearchResults.map((food) => (
+                            <button
+                              key={food.nummer}
+                              type="button"
+                              className="w-full text-left px-4 py-2 hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                              onClick={() => handleFoodSelect(food)}
+                            >
+                              <div className="font-medium text-gray-900">{food.namn}</div>
+                              <div className="text-sm text-gray-600">
+                                Nr: {food.nummer}
+                                {food.latin && ` • ${food.latin}`}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {showSearchDropdown && foodSearchResults.length === 0 && !isSearching && foodSearchQuery.length >= 2 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-center text-gray-500">
+                          Inga livsmedel hittades
+                        </div>
+                      )}
                     </div>
+
+                    {/* Display selected food */}
+                    {newIngredient.foodNumber && newIngredient.foodNameSnapshot && (
+                      <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                        <div className="text-sm font-medium text-blue-900">Valt livsmedel:</div>
+                        <div className="text-sm text-blue-800">
+                          {newIngredient.foodNameSnapshot} (Nr: {newIngredient.foodNumber})
+                        </div>
+                      </div>
+                    )}
+
                     <div>
-                      <label className="block text-sm mb-1">Gram</label>
+                      <label className="block text-sm mb-1">Gram *</label>
                       <input
                         type="number"
                         className="input w-full"
@@ -344,6 +448,7 @@ export default function RecipesPage() {
                       type="button"
                       className="btn btn-secondary w-full"
                       onClick={handleAddIngredient}
+                      disabled={!newIngredient.foodNumber || !newIngredient.foodNameSnapshot || newIngredient.grams <= 0}
                     >
                       Lägg till ingrediens
                     </button>
