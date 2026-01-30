@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -80,9 +81,16 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="btn btn-primary w-full"
+              className="btn btn-primary w-full flex items-center justify-center gap-2"
             >
-              {isLoading ? 'Loggar in...' : 'Logga in'}
+              {isLoading ? (
+                <>
+                  <LoadingSpinner size="sm" text="" />
+                  <span>Loggar in...</span>
+                </>
+              ) : (
+                'Logga in'
+              )}
             </button>
           </div>
 

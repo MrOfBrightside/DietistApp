@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { recipeService } from '../services/recipeService';
 import { Recipe, CreateRecipeDto, RecipeItemDto } from '@dietistapp/shared';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import ErrorMessage from '../components/common/ErrorMessage';
 
 interface ExtendedRecipe extends Recipe {
   items?: Array<{
@@ -174,9 +176,7 @@ export default function RecipesPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold text-gray-900">Mina recept</h1>
-        <div className="card">
-          <p className="text-gray-500">Laddar recept...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Laddar recept..." />
       </div>
     );
   }
@@ -190,11 +190,7 @@ export default function RecipesPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorMessage message={error} onRetry={loadRecipes} />}
 
       {recipes.length === 0 ? (
         <div className="card">
